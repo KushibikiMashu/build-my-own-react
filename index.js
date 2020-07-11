@@ -1,18 +1,37 @@
-const element = {
-  type: "h1", // tagName
-  props: {
-    title: "foo",
-    children: "Hello",
-  },
+function createElement(type, props, ...children) {
+  return {
+    type,
+    props: {
+      ...props,
+      children : children.map(child =>
+        typeof child === "object" ? child : createTextElement(child)
+      ),
+    },
+  }
 }
 
-const container = document.getElementById('root')
+// 文字列をオブジェクトにする
+function createTextElement(text) {
+  return {
+    type: "TEXT_ELEMENT",
+    props: {
+      nodeValue: text,
+      children: [],
+    }
+  }
+}
 
-const node = document.createElement(element.type) // renderされる側
-node["title"] = element.props.title
+const Didact = {
+  createElement,
+}
 
-const text = document.createTextNode("")
-text["nodeValue"] = element.props.children
+// @jsx Didact.createElement
+const element = (
+  <div id="foo">
+    <a>bar</a>
+    <b/>
+  </div>
 
-node.appendChild(text)
-container.appendChild(node)
+)
+const container = document.getElementById("root")
+ReactDOM.render(element, container)
