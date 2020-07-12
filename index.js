@@ -36,24 +36,52 @@ function createDom(fiber) {
   return dom
 }
 
+// 全てのnodeをDOMに再帰的に追加する
+function commitRoot() {
+  commitWork(wipRoot.child)
+  wipRoot = null
+}
+
+function commitWork(fiber) {
+  if(!fiber) {
+    return
+  }
+
+  // fiberの親のDOMにnodeを追加する（自分のDOMを親のDOMにappendChildする）
+  const domParent = fiber.parent.dom
+  domParent.appendChild(fiber.dom)
+
+  // 子要素、兄弟要素を探索する
+  commitWork(fiber.child)
+  commitWork(fiber.sibling)
+}
+
 function render(element, container) {
   // set next unit of work
-  nextUnitOfWork = {
+  wipRoot = {
     dom: container,
     props: {
       children: [element],
     }
   }
+  nextUnitOfWork = wipRoot
 }
 
 let nextUnitOfWork = null
+let wipRoot = null
 
 function workLoop(deadline) {
   let shouldYield = false
   while (nextUnitOfWork && !shouldYield) {
-    nextUnitOfWork = perfomUnitOfWork(nextUnitOfWork)
+    nextUnitOfWork = performUnitOfWork(nextUnitOfWork)
 
     shouldYield = deadline.timeRemaining() < 1
+  }
+
+  // 全ての作業を終えたら（＝ nextUnitOfWorkがundefinedになったら）、
+  // ファイバーツリーをDOMにコミットする
+  if (!nextUnitOfWork && wipRoot) {
+    commitRoot()
   }
 
   requestIdleCallback(workLoop)
@@ -61,14 +89,10 @@ function workLoop(deadline) {
 
 requestIdleCallback(workLoop)
 
-function perfomUnitOfWork(fiber) {
+function performUnitOfWork(fiber) {
   // add dom node
   if (!fiber.dom) {
     fiber.dom = createDom(fiber)
-  }
-
-  if (fiber.parent) {
-    fiber.parent.dom.appendChild(fiber.dom)
   }
 
   const elements = fiber.props.children
@@ -134,3 +158,4 @@ const element = (
 
 const container = document.getElementById("root")
 Didact.render(element, container)
+
