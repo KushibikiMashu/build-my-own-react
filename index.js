@@ -88,20 +88,36 @@ function commitWork(fiber) {
     return
   }
 
-  const domParent = fiber.parent.dom
+  // DOMをもつfiberが見つかるまで、
+  // fiber treeを遡る
+  let domParentFiber = fiber.parent
+  while (!domParentFiber.dom) {
+    domParentFiber = domParentFiber.parent
+  }
+  const domParent = domParentFiber.dom
 
   // fiberの親のDOMにnodeを追加する（自分のDOMを親のDOMにappendChildする）
+  // ただし、関数コンポーネントのdomはnullである
   if (fiber.effectTag === "PLACEMENT" && fiber.dom != null) {
     domParent.appendChild(fiber.dom)
   } else if (fiber.effectTag === "UPDATE" && fiber.dom != null) {
     updateDom(fiber.dom, fiber.alternate.props, fiber.props)
   } else if (fiber.effectTag === "DELETION") {
-    domParent.removeChild(fiber.dom)
+    commitDeletion(fiber, domParent)
   }
 
   // 子要素、兄弟要素を探索する
   commitWork(fiber.child)
   commitWork(fiber.sibling)
+}
+
+function commitDeletion(fiber, domParent) {
+  if(fiber.dom) {
+    domParent.removeChild(fiber.dom)
+  } else {
+    // DOMノードをもつ子が見つかるまでfiber treeを下る
+    commitDeletion(fiber.child, domParent)
+  }
 }
 
 function render(element, container) {
@@ -142,13 +158,12 @@ function workLoop(deadline) {
 requestIdleCallback(workLoop)
 
 function performUnitOfWork(fiber) {
-  // add dom node
-  if (!fiber.dom) {
-    fiber.dom = createDom(fiber)
+  const isFunctionComponent = fiber.type instanceof Function
+  if(isFunctionComponent) {
+    updateFunctionComponent(fiber)
+  } else {
+    updateHostComponent(fiber)
   }
-
-  const elements = fiber.props.children
-  reconcileChildren(fiber, elements)
 
   // return next unit of work
   // 子供があれば、子供を返す
@@ -167,6 +182,29 @@ function performUnitOfWork(fiber) {
     // rootの時は、parentがないのでundefinedになり、loopを抜ける
     nextFiber = nextFiber.parent
   }
+}
+
+function updateFunctionComponent(fiber) {
+  // fiber.typeは関数コンポーネント
+  // fiber.type = ƒ App(props) {
+  //   return Didact.createElement(
+  //     "h1",
+  //     null,
+  //     "Hi ",
+  //     props.name
+  //   );
+  // }
+  const children = [fiber.type(fiber.props)]
+  reconcileChildren(fiber, children)
+}
+
+function updateHostComponent(fiber) {
+  // add dom node
+  if (!fiber.dom) {
+    fiber.dom = createDom(fiber)
+  }
+
+  reconcileChildren(fiber, fiber.props.children)
 }
 
 // wipFiberは古いfiber。elementsは新しいもの。この関数でfiberとelementsを比較する
@@ -237,21 +275,27 @@ const Didact = {
   render,
 }
 
+
+/** @jsx Didact.createElement */
+function App(props) {
+  return <h1>Hi {props.name}</h1>
+}
+// const element = <App name="foo" />
+const element = <App name="foo" />
 const container = document.getElementById("root")
+Didact.render(element, container)
 
-const updateValue = e => {
-  rerender(e.target.value)
-}
-
-const rerender = value => {
-  /** @jsx Didact.createElement */
-  const element = (
-    <div>
-      <input type="input" value={value} onInput={updateValue}/>
-      <h2>Hello {value}</h2>
-    </div>
-  )
-  Didact.render(element, container)
-}
-
-rerender("World")
+// const updateValue = e => {
+//   rerender(e.target.value)
+// }
+//
+// const rerender = value => {
+//   /** @jsx Didact.createElement */
+//   function App(props) {
+//     return <h1>Hi {props.name}</h1>
+//   }
+//   const element = App()
+//   Didact.render(element, container)
+// }
+//
+// rerender("World")
