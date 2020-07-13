@@ -112,7 +112,7 @@ function commitWork(fiber) {
 }
 
 function commitDeletion(fiber, domParent) {
-  if(fiber.dom) {
+  if (fiber.dom) {
     domParent.removeChild(fiber.dom)
   } else {
     // DOMノードをもつ子が見つかるまでfiber treeを下る
@@ -122,6 +122,7 @@ function commitDeletion(fiber, domParent) {
 
 function render(element, container) {
   // set next unit of work
+  // 次に描画するnodeを準備する
   wipRoot = {
     dom: container,
     props: {
@@ -159,7 +160,7 @@ requestIdleCallback(workLoop)
 
 function performUnitOfWork(fiber) {
   const isFunctionComponent = fiber.type instanceof Function
-  if(isFunctionComponent) {
+  if (isFunctionComponent) {
     updateFunctionComponent(fiber)
   } else {
     updateHostComponent(fiber)
@@ -184,7 +185,14 @@ function performUnitOfWork(fiber) {
   }
 }
 
+let wipFiber = null
+let hookIndex = null
+
 function updateFunctionComponent(fiber) {
+  wipFiber = fiber
+  hookIndex = 0
+  wipFiber.hooks = []
+
   // fiber.typeは関数コンポーネント
   // fiber.type = ƒ App(props) {
   //   return Didact.createElement(
@@ -198,6 +206,38 @@ function updateFunctionComponent(fiber) {
   reconcileChildren(fiber, children)
 }
 
+function useState(initial) {
+  const oldHook = wipFiber.alternate &&
+    wipFiber.alternate.hooks &&
+    wipFiber.alternate.hooks[hookIndex]
+  const hook = {
+    state: oldHook ? oldHook.state : initial,
+    queue: [],
+  }
+
+  const actions = oldHook ? oldHook.queue : []
+  actions.forEach(action => {
+    hook.state = action(hook.state)
+  })
+
+  const setState = action => {
+    hook.queue.push(action)
+    // stateが変化した後のnode
+    wipRoot = {
+      dom: currentRoot.dom, // domはそのまま
+      props: currentRoot.props, // propsも変化なし
+      alternate: currentRoot, // 今のnodeを古いものにする
+    }
+    // 次にレンダーする
+    nextUnitOfWork = wipRoot
+    deletions = []
+  }
+
+  wipFiber.hooks.push(hook)
+  hookIndex++
+  return [hook.state, setState]
+}
+
 function updateHostComponent(fiber) {
   // add dom node
   if (!fiber.dom) {
@@ -207,7 +247,8 @@ function updateHostComponent(fiber) {
   reconcileChildren(fiber, fiber.props.children)
 }
 
-// wipFiberは古いfiber。elementsは新しいもの。この関数でfiberとelementsを比較する
+// wipFiberは更新があったfiber。elementsはfiberの子要素。
+// この関数でfiberとelementsを比較し、子要素のfiberを作成する
 function reconcileChildren(wipFiber, elements) {
   let index = 0
   let oldFiber = wipFiber.alternate && wipFiber.alternate.child
@@ -273,29 +314,31 @@ function reconcileChildren(wipFiber, elements) {
 const Didact = {
   createElement,
   render,
+  useState,
 }
 
 
 /** @jsx Didact.createElement */
-function App(props) {
-  return <h1>Hi {props.name}</h1>
+function Counter() {
+  const [state, setState] = Didact.useState(1)
+  const [value, setValue] = Didact.useState("")
+
+  const handleClick = (e) => {
+    e.preventDefault()
+
+    setState(c => c + 1)
+  }
+
+  return (
+    <div>
+      <button type="button" onClick={handleClick}>
+        Count: {state}
+      </button>
+      <input value={value} onChange={e => setValue(value => e.target.value)}/>
+    </div>
+  )
 }
-// const element = <App name="foo" />
-const element = <App name="foo" />
+
+const element = <Counter/>
 const container = document.getElementById("root")
 Didact.render(element, container)
-
-// const updateValue = e => {
-//   rerender(e.target.value)
-// }
-//
-// const rerender = value => {
-//   /** @jsx Didact.createElement */
-//   function App(props) {
-//     return <h1>Hi {props.name}</h1>
-//   }
-//   const element = App()
-//   Didact.render(element, container)
-// }
-//
-// rerender("World")
